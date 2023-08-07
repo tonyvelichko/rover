@@ -7,6 +7,7 @@ use apollo_parser::{ast, Parser};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rover_std::{Fs, Style};
 
+use reqwest::header::HeaderMap;
 use std::str::FromStr;
 
 use rover_client::operations::subgraph::fetch::{self, SubgraphFetchInput};
@@ -131,6 +132,34 @@ pub(crate) fn resolve_supergraph_yaml(
                                 .map_err(RoverError::from)
                             })
                     }
+                    SchemaSource::Remote {
+                        remote_url,
+                        headers,
+                    } => client_config
+                        .get_reqwest_client()
+                        .map_err(RoverError::from)
+                        .and_then(|client| {
+                            client
+                                .get(remote_url.as_ref())
+                                .headers(
+                                    headers
+                                        .clone()
+                                        .map(|headers_map| {
+                                            HeaderMap::try_from(&headers_map).unwrap_or_default()
+                                        })
+                                        .unwrap_or_default(),
+                                )
+                                .send()
+                                .and_then(|response| response.text())
+                                .map(|schema| {
+                                    let url = &subgraph_data
+                                        .routing_url
+                                        .clone()
+                                        .unwrap_or_else(|| remote_url.to_string());
+                                    SubgraphDefinition::new(subgraph_name, url, schema)
+                                })
+                                .map_err(RoverError::from)
+                        }),
                     SchemaSource::Subgraph {
                         graphref: graph_ref,
                         subgraph,

@@ -145,6 +145,10 @@ impl SupergraphOpts {
                         polling_interval,
                         introspection_headers,
                     ),
+                    SchemaSource::Remote {
+                        remote_url: _remote_url,
+                        headers: _headers,
+                    } => todo!("Implement watching remote schema changes"),
                     SchemaSource::Sdl { sdl } => {
                         let routing_url = routing_url.ok_or_else(|| {
                             anyhow!("`routing_url` must be set when providing SDL directly")
