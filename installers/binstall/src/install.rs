@@ -2,10 +2,10 @@ use crate::InstallerError;
 
 use rover_std::Fs;
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
-use atty::{self, Stream};
 use camino::Utf8PathBuf;
+use url::Url;
 
 pub struct Installer {
     pub binary_name: String,
@@ -46,8 +46,9 @@ impl Installer {
         plugin_name: &str,
         plugin_tarball_url: &str,
         client: &reqwest::blocking::Client,
+        is_latest: bool,
     ) -> Result<Option<Utf8PathBuf>, InstallerError> {
-        let version = self.get_plugin_version(plugin_tarball_url)?;
+        let version = self.get_plugin_version(plugin_tarball_url, is_latest)?;
 
         let bin_dir_path = self.get_bin_dir_path()?;
         if !bin_dir_path.exists() {
@@ -74,31 +75,50 @@ impl Installer {
         Ok(Some(plugin_bin_destination))
     }
 
-    pub fn get_plugin_version(&self, plugin_tarball_url: &str) -> Result<String, InstallerError> {
-        let no_redirect_client = reqwest::blocking::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()?;
-        let response = no_redirect_client
-            .head(plugin_tarball_url)
-            .send()?
-            .error_for_status()?;
+    pub fn get_plugin_version(
+        &self,
+        plugin_tarball_url: &str,
+        is_latest: bool,
+    ) -> Result<String, InstallerError> {
+        if is_latest {
+            let no_redirect_client = reqwest::blocking::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?;
+            let response = no_redirect_client
+                .head(plugin_tarball_url)
+                .send()?
+                .error_for_status()?;
 
-        let version = if let Some(version) = response.headers().get("x-version") {
-            Ok(version
-                .to_str()
-                .map_err(|e| InstallerError::IoError(io::Error::new(io::ErrorKind::Other, e)))?
-                .to_string())
+            if let Some(version) = response.headers().get("x-version") {
+                Ok(version
+                    .to_str()
+                    .map_err(|e| InstallerError::IoError(io::Error::new(io::ErrorKind::Other, e)))?
+                    .to_string())
+            } else {
+                Err(InstallerError::IoError(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "{} did not respond with an X-Version header, which is required to determine the latest version",
+                        plugin_tarball_url
+                    ),
+                )))
+            }
         } else {
-            Err(InstallerError::IoError(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "{} did not respond with an X-Version header",
-                    plugin_tarball_url
-                ),
-            )))
-        }?;
-
-        Ok(version)
+            let url = Url::parse(plugin_tarball_url).map_err(|e| {
+                // this should be unreachable
+                InstallerError::IoError(io::Error::new(io::ErrorKind::InvalidData, e))
+            })?;
+            if let Some(version) = url.path_segments().and_then(|s| s.last()) {
+                if version.starts_with('v') {
+                    Ok(version.to_string())
+                } else {
+                    Ok(format!("v{version}"))
+                }
+            } else {
+                // this should be unreachable
+                Err(InstallerError::IoError(io::Error::new(io::ErrorKind::InvalidData, format!("The tarball url for the plugin ({plugin_tarball_url}) cannot be a base URL"))))
+            }
+        }
     }
 
     /// Gets the location the executable will be installed to
@@ -189,7 +209,7 @@ impl Installer {
 
         // If we're not attached to a TTY then we can't get user input, so there's
         // nothing to do except inform the user about the `-f` flag.
-        if !atty::is(Stream::Stdin) {
+        if !std::io::stdin().is_terminal() {
             return Err(InstallerError::NoTty);
         }
 

@@ -198,7 +198,7 @@ Every subgraph name **must**:
 
 The URL that your supergraph uses to communicate with the subgraph in a [managed federation architecture](/federation/managed-federation/overview/).
 
-**Required** the first time you publish a particular subgraph. Provide an empty string if your subgraph isn't deployed yet, or if you aren't using managed federation.
+**Required** the first time you publish a particular subgraph. If your subgraph isn't deployed yet, or if you aren't using managed federation, you can pass an empty string. Passing an empty string requires you to set the `--allow-invalid-routing-url` flag.
 
 **Optional** after your first publish. Provide only if you need to change the subgraph's routing URL.
 
@@ -218,6 +218,19 @@ If a monolithic schema for this variant already exists in the graph registry ins
 This _permanently_ deletes the monolithic schema from this variant and replaces it with a single subgraph. In many cases, you need to run `subgraph publish` for multiple or _all_ of your subgraphs before Studio can successfully compose a supergraph schema.
 
 This option has no effect if you publish to a non-monolithic variant.
+
+</td>
+</tr>
+<tr>
+<td>
+
+###### `--allow-invalid-routing-url`
+
+</td>
+
+<td>
+
+By default, `rover subgraph publish` will fail if an unparsable routing URL is associated with a subgraph. If you need to disable this warning and allow the invalid URL to be published anyway, you can pass this option.
 
 </td>
 </tr>

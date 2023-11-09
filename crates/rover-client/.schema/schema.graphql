@@ -352,6 +352,7 @@ input CheckFilterInput {
   subgraphs: [String!]
   status: CheckFilterInputStatusOption
   variants: [String!]
+  ids: [String!]
 }
 
 """
@@ -360,8 +361,8 @@ This should always match CheckWorkflowStatus
 """
 enum CheckFilterInputStatusOption {
   FAILED
-  PENDING
   PASSED
+  PENDING
 }
 
 """The result of performing a subgraph check, including all steps."""
@@ -469,6 +470,16 @@ input ClientInfoFilter {
   version: String
 }
 
+"""Cloud Router tiers"""
+enum CloudTier {
+  """Serverless tier"""
+  SERVERLESS
+  """Dedicated tier"""
+  DEDICATED
+  """Enterprise Cloud tier"""
+  ENTERPRISE
+}
+
 """The result of supergraph composition that Studio performed in response to an attempted deletion of a subgraph."""
 type SubgraphRemovalResult {
   """A list of errors that occurred during composition. Errors mean that Apollo was unable to compose the graph variant's subgraphs into a supergraph schema. If any errors are present, gateways / routers are not updated."""
@@ -487,8 +498,12 @@ type SubgraphPublicationResult {
   updatedGateway: Boolean!
   """Whether a new subgraph was created as part of this publish."""
   wasCreated: Boolean!
+  """Whether an implementingService was updated as part of this mutation"""
+  wasUpdated: Boolean!
   """All subgraphs that were created from this mutation"""
   subgraphsCreated: [String!]!
+  """The Launch result part of this subgraph publish."""
+  launch: Launch
   """The URL of the Studio page for this update's associated launch, if available."""
   launchUrl: String
   """Human-readable text describing the launch result of the subgraph publish."""
@@ -734,6 +749,282 @@ input FilterConfigInput {
   include: [String!]!
 }
 
+type FlatDiffAddArgument implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddDirective implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddDirectiveUsage implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddEnum implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddEnumValue implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddField implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddImplementation implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddInput implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddInterface implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddObject implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddScalar implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddSchemaDefinition implements FlatDiffItem {
+  type: FlatDiffType!
+}
+
+type FlatDiffAddSchemaDirectiveUsage implements FlatDiffItem & FlatDiffItemValue {
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddSchemaRootOperation implements FlatDiffItem & FlatDiffItemRootType & FlatDiffItemValue {
+  rootType: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddUnion implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffAddUnionMember implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffAddValidLocation implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffChangeArgumentDefault implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemNullableValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String
+}
+
+type FlatDiffChangeDescription implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemNullableValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String
+}
+
+type FlatDiffChangeDirectiveRepeatable implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+  value: Boolean!
+}
+
+type FlatDiffChangeInputFieldDefault implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemNullableValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String
+}
+
+type FlatDiffChangeSchemaDescription implements FlatDiffItem & FlatDiffItemNullableValue {
+  type: FlatDiffType!
+  value: String
+}
+
+interface FlatDiffItem {
+  type: FlatDiffType!
+}
+
+interface FlatDiffItemCoordinate implements FlatDiffItem {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+interface FlatDiffItemNullableValue implements FlatDiffItem {
+  type: FlatDiffType!
+  value: String
+}
+
+interface FlatDiffItemRootType implements FlatDiffItem {
+  rootType: String!
+  type: FlatDiffType!
+}
+
+interface FlatDiffItemValue implements FlatDiffItem {
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveArgument implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveDirective implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveDirectiveUsage implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveEnum implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveEnumValue implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveField implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveImplementation implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveInput implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveInterface implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveObject implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveScalar implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveSchemaDefinition implements FlatDiffItem {
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveSchemaDirectiveUsage implements FlatDiffItem & FlatDiffItemValue {
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveSchemaRootOperation implements FlatDiffItem & FlatDiffItemRootType {
+  rootType: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveUnion implements FlatDiffItem & FlatDiffItemCoordinate {
+  coordinate: String!
+  type: FlatDiffType!
+}
+
+type FlatDiffRemoveUnionMember implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+type FlatDiffRemoveValidLocation implements FlatDiffItem & FlatDiffItemCoordinate & FlatDiffItemValue {
+  coordinate: String!
+  type: FlatDiffType!
+  value: String!
+}
+
+enum FlatDiffType {
+  ADD_ARGUMENT
+  ADD_DIRECTIVE
+  ADD_DIRECTIVE_USAGE
+  ADD_ENUM
+  ADD_ENUM_VALUE
+  ADD_FIELD
+  ADD_IMPLEMENTATION
+  ADD_INPUT
+  ADD_INTERFACE
+  ADD_OBJECT
+  ADD_SCALAR
+  ADD_SCHEMA_DEFINITION
+  ADD_SCHEMA_DIRECTIVE_USAGE
+  ADD_SCHEMA_ROOT_OPERATION
+  ADD_UNION
+  ADD_UNION_MEMBER
+  ADD_VALID_LOCATION
+  CHANGE_ARGUMENT_DEFAULT
+  CHANGE_DESCRIPTION
+  CHANGE_INPUT_FIELD_DEFAULT
+  CHANGE_REPEATABLE
+  CHANGE_SCHEMA_DESCRIPTION
+  REMOVE_ARGUMENT
+  REMOVE_DIRECTIVE
+  REMOVE_DIRECTIVE_USAGE
+  REMOVE_ENUM
+  REMOVE_ENUM_VALUE
+  REMOVE_FIELD
+  REMOVE_IMPLEMENTATION
+  REMOVE_INPUT
+  REMOVE_INTERFACE
+  REMOVE_OBJECT
+  REMOVE_SCALAR
+  REMOVE_SCHEMA_DEFINITION
+  REMOVE_SCHEMA_DIRECTIVE_USAGE
+  REMOVE_SCHEMA_ROOT_OPERATION
+  REMOVE_UNION
+  REMOVE_UNION_MEMBER
+  REMOVE_VALID_LOCATION
+}
+
 type GitContext {
   commit: ID
 }
@@ -789,6 +1080,8 @@ type GraphVariant {
   id: ID!
   """Router associated with this graph variant"""
   router: Router
+  """The variant's name (e.g., `staging`)."""
+  name: String!
   """The filter configuration used to build a contract schema. The configuration consists of lists of tags for schema elements to include or exclude in the resulting schema."""
   contractFilterConfig: FilterConfig
   """
@@ -802,8 +1095,6 @@ type GraphVariant {
   latestApprovedLaunch: Launch
   """Latest launch for the variant, whether successful or not."""
   latestLaunch: Launch
-  """The variant's name (e.g., `staging`)."""
-  name: String!
   """Which permissions the current user has for interacting with this variant"""
   permissions: GraphVariantPermissions!
   readme: Readme!
@@ -941,11 +1232,11 @@ interface Identity {
 }
 
 type InternalIdentity implements Identity {
-  accounts: [Organization!]!
   asActor: Actor!
   email: String
   id: ID!
   name: String!
+  accounts: [Organization!]!
 }
 
 input IntrospectionDirectiveInput {
@@ -1099,6 +1390,7 @@ type Launch {
   graphVariant: String!
   """Cloud Router order for this launch ID"""
   order: OrderOrError!
+  orders: [Order!]!
   """The timestamp when the launch was approved."""
   approvedAt: Timestamp
   """The associated build for this launch (a build includes schema composition and contract filtering). This value is null until the build is initiated."""
@@ -1117,6 +1409,8 @@ type Launch {
   isPublished: Boolean
   """The most recent launch sequence step that has started but not necessarily completed."""
   latestSequenceStep: LaunchSequenceStep
+  """The launch right before this one. Null if this is the first on this variant."""
+  previousLaunch: Launch
   """A specific publication of a graph variant pertaining to this launch."""
   publication: SchemaPublication
   """A list of results from the completed launch. The items included in this list vary depending on whether the launch succeeded, failed, or was superseded."""
@@ -1226,7 +1520,9 @@ type LintResult {
 }
 
 enum LintRule {
+  ALL_ELEMENTS_REQUIRE_DESCRIPTION
   CONTACT_DIRECTIVE_MISSING
+  DEFINED_TYPES_ARE_UNUSED
   DEPRECATED_DIRECTIVE_MISSING_REASON
   DIRECTIVE_COMPOSITION
   DIRECTIVE_NAMES_SHOULD_BE_CAMEL_CASE
@@ -1577,6 +1873,16 @@ type Order {
   status: OrderStatus!
   """Reason for ERRORED or ROLLING_BACK orders"""
   reason: String
+  """
+  Completion percentage of the order (between 0 and 100)
+  
+  This will only return data for IN_PROGRESS, COMPLETED, or SUPERSEDED states
+  """
+  completionPercentage: Int
+  """When this Order was created"""
+  createdAt: NaiveDateTime!
+  """Last time this Order was updated"""
+  updatedAt: NaiveDateTime
   logs: [LogMessage!]!
   """Router associated with this Order"""
   router: Router!
@@ -1717,6 +2023,90 @@ type PlanError {
   message: String!
 }
 
+type Proposal {
+  """The variant this Proposal is under the hood."""
+  backingVariant: GraphVariant!
+  createdAt: Timestamp!
+  """
+  null if user is deleted, or if user removed from org
+  and others in the org no longer have access to this user's info
+  """
+  createdBy: Identity
+  displayName: String!
+  id: ID!
+  """True if only some of the changes in this proposal are currently published to the implementation variant"""
+  isPartiallyImplemented: Boolean!
+  """The variant this Proposal was cloned/sourced from."""
+  sourceVariant: GraphVariant!
+  status: ProposalStatus!
+  updatedAt: Timestamp!
+  updatedBy: Identity
+}
+
+enum ProposalChangeMismatchSeverity {
+  ERROR
+  OFF
+  WARN
+}
+
+enum ProposalCoverage {
+  FULL
+  NONE
+  OVERRIDDEN
+  PARTIAL
+  PENDING
+}
+
+type ProposalRevision {
+  checkWorkflows: [CheckWorkflow!]!
+  createdBy: Identity
+  id: ID!
+  launch: Launch
+  """null if this is the first revision"""
+  previousRevision: ProposalRevision
+  summary: String!
+}
+
+type ProposalsCheckTask implements CheckWorkflowTask {
+  completedAt: Timestamp
+  createdAt: Timestamp!
+  graphID: ID!
+  id: ID!
+  status: CheckWorkflowTaskStatus!
+  targetURL: String
+  workflow: CheckWorkflow!
+  """The results of this proposal check were overridden"""
+  didOverrideProposalsCheckTask: Boolean!
+  """Diff items in this Check task."""
+  diffs: [ProposalsCheckTaskDiff!]!
+  """Indicates the level of coverage a check's changeset is in approved Proposals. PENDING while Check is still running."""
+  proposalCoverage: ProposalCoverage!
+  """Proposals with their state at the time the check was run associated to this check task."""
+  relatedProposalResults: [RelatedProposalResult!]!
+  """The configured severity at the time the check was run. If the check failed, this is the severity that should be shown. While this Check is PENDING defaults to Service's severityLevel."""
+  severityLevel: ProposalChangeMismatchSeverity!
+}
+
+"""A diff item in this Check Task and their related Proposals."""
+type ProposalsCheckTaskDiff {
+  """A diff item in this Check Task."""
+  diffItem: FlatDiffItem!
+  """If this diff item is associated with an approved Proposal."""
+  hasApprovedProposal: Boolean!
+  """Proposals associated with this diff."""
+  relatedProposalResults: [RelatedProposalResult!]!
+  """The subgraph this diff belongs to."""
+  subgraph: String!
+}
+
+enum ProposalStatus {
+  APPROVED
+  CLOSED
+  DRAFT
+  IMPLEMENTED
+  OPEN
+}
+
 """The result of a successful call to PersistedQueryListMutation.publishOperations."""
 type PublishOperationsResult {
   """The build created by this publish operation."""
@@ -1736,14 +2126,14 @@ input PublishSubgraphsSubgraphInput {
 
 """Queries defined by this subgraph"""
 type Query {
+  """Returns details of the authenticated `User` or `Graph` executing this query. If this is an unauthenticated query (i.e., no API key is provided), this field returns null."""
+  me: Identity
   """Returns details of the Studio organization with the provided ID."""
   organization(id: ID!): Organization
   """Returns the root URL of the Apollo Studio frontend."""
   frontendUrlRoot: String!
   """Returns details of the graph with the provided ID."""
   graph(id: ID!): Graph
-  """Returns details of the authenticated `User` or `Graph` executing this query. If this is an unauthenticated query (i.e., no API key is provided), this field returns null."""
-  me: Identity
   """Returns details of the Apollo user with the provided ID."""
   user(id: ID!): User
   """Returns details of a Studio graph variant with the provided graph ref. A graph ref has the format `graphID@variantName` (or just `graphID` for the default variant `current`). Returns null if the graph or variant doesn't exist, or if the graph isn't accessible by the current actor."""
@@ -1762,6 +2152,16 @@ type Readme {
   lastUpdatedBy: Identity
   """The timestamp when the README was most recently updated. `null` for the default README"""
   lastUpdatedTime: Timestamp
+}
+
+"""A Proposal related to a Proposal Check Task."""
+type RelatedProposalResult {
+  """The latest revision at the time the check was run, defaults to current revision if nothing found for time of the check."""
+  latestRevisionAtCheck: ProposalRevision!
+  """The Proposal related to the check. State may have changed since the Check was run."""
+  proposal: Proposal!
+  """The status of the Proposal at the time the check was run, defaults to current state if nothing found for time of the check."""
+  statusAtCheck: ProposalStatus!
 }
 
 union RemoveOperationCollectionEntryResult = OperationCollection | PermissionError
@@ -1791,9 +2191,19 @@ type Router {
   secrets: [Secret!]!
 }
 
+"""Represents the possible outcomes of a setGcus mutation"""
+union RouterGcusResult = RouterGcusSuccess
+
+"""Success branch of a setGcus mutation"""
+type RouterGcusSuccess {
+  order: Order!
+}
+
 type RouterMutation {
   """Set secrets for this Cloud Router"""
   setSecrets(input: RouterSecretsInput!): RouterSecretsResult!
+  """Set the number of GCUs associated with this Router"""
+  setGcus(gcus: Int!): RouterGcusResult!
 }
 
 """User input for a RouterSecrets mutation"""
@@ -1855,7 +2265,7 @@ type RouterVersion {
   """Config version for this router version"""
   configVersion: String!
   """JSON schema for validating the router configuration for this router version"""
-  configSchema: String!
+  configSchema(tier: CloudTier): String!
 }
 
 """A GraphQL schema document and associated metadata."""
@@ -1950,21 +2360,23 @@ Each graph has one or more variants, which correspond to the different environme
 Each variant has its own GraphQL schema, which means schemas can differ between environments.
 """
 type Graph implements Identity {
-  """The organization that this graph belongs to."""
-  account: Organization
   """A list of the graph API keys that are active for this graph."""
   apiKeys: [GraphApiKey!]
   """Provides a view of the graph as an `Actor` type."""
   asActor: Actor!
-  """Get a check workflow for this graph by its ID"""
-  checkWorkflow(id: ID!): CheckWorkflow
   """The graph's globally unique identifier."""
   id: ID!
-  """Permissions of the current user in this graph."""
-  myRole: UserPermission
   name: String!
   """Describes the permissions that the active user has for this graph."""
   roles: GraphRoles
+  """A list of the variants for this graph."""
+  variants: [GraphVariant!]!
+  """The organization that this graph belongs to."""
+  account: Organization
+  """Get a check workflow for this graph by its ID"""
+  checkWorkflow(id: ID!): CheckWorkflow
+  """Permissions of the current user in this graph."""
+  myRole: UserPermission
   """The graph's name."""
   title: String!
   """
@@ -1974,8 +2386,6 @@ type Graph implements Identity {
    For a list of _all_ variants associated with a graph, use `Graph.variants` instead.
   """
   variant(name: String!): GraphVariant
-  """A list of the variants for this graph."""
-  variants: [GraphVariant!]!
   """The Persisted Query List associated with this graph with the given ID."""
   persistedQueryList(id: ID!): PersistedQueryList
   """Get a GraphQL document by hash"""
@@ -2008,6 +2418,8 @@ type GraphMutation {
     """The graphRef of the variant the contract will be derived from, e.g. `my-graph@production`. Once set, this value cannot be changed."""
     sourceVariant: String
   ): ContractVariantUpsertResult!
+  """Make changes to a graph variant."""
+  variant(name: String!): GraphVariantMutation
   """Lint a single schema using the graph's linter configuration."""
   lintSchema(
     """The schema to diff rule violations against, if not provided the full set of rule violations will be returned for the proposed sdl."""
@@ -2017,8 +2429,6 @@ type GraphMutation {
   ): LintResult!
   """Provides access to mutation fields for modifying a Persisted Query List with the provided ID."""
   persistedQueryList(id: ID!): PersistedQueryListMutation!
-  """Make changes to a graph variant."""
-  variant(name: String!): GraphVariantMutation
   """Publish a schema to this variant, either via a document or an introspection query result."""
   uploadSchema(schema: IntrospectionSchemaInput, schemaDocument: String, tag: String!, historicParameters: HistoricQueryParameters, overrideComposedSchema: Boolean! = false, errorOnBadRequest: Boolean! = true, gitContext: GitContextInput): SchemaPublicationResult
   """
@@ -2083,11 +2493,12 @@ type GraphMutation {
     isProposalCheck: Boolean! = false
     """If this check is triggered for an sdl fetched using introspection, this is the endpoint where that schema was being served."""
     introspectionEndpoint: String
-  ): CheckPartialSchemaResult!
+  ): CheckPartialSchemaResult! @deprecated(reason: "Use GraphVariant.submitSubgraphCheckAsync instead.\nThis mutation polls to wait for the check to finish,\nwhile subgraphSubgraphCheckAsync triggers returns\nwithout waiting for the check to finish.")
 }
 
 """Individual permissions for the current user when interacting with a particular Studio graph."""
 type GraphRoles {
+  service: Graph!
   """Whether the currently authenticated user is permitted to perform schema checks (i.e., run `rover (sub)graph check`)."""
   canCheckSchemas: Boolean!
   """Whether the currently authenticated user is permitted to create new graph variants."""
@@ -2104,6 +2515,8 @@ type GraphRoles {
   canManageKeys: Boolean!
   """Whether the currently authenticated user is permitted to manage proposal permission settings for this graph."""
   canManageProposalPermissions: Boolean!
+  """Whether the currently authenticated user is permitted to manage proposal settings, like setting the implementation variant, on this graph."""
+  canManageProposalSettings: Boolean!
   """Whether the currently authenticated user is permitted to perform basic administration of variants (e.g., make a variant public)."""
   canManageVariants: Boolean!
   """Whether the currently authenticated user is permitted to view details about the build configuration (e.g. build pipeline version)."""
@@ -2119,7 +2532,6 @@ type GraphRoles {
   canRegisterOperations: Boolean!
   """Whether the currently authenticated user is permitted to make updates to the check configuration for this graph."""
   canWriteCheckConfiguration: Boolean!
-  service: Graph!
   canCreateProposal: Boolean!
   canEditProposal: Boolean!
 }
@@ -2266,14 +2678,14 @@ type SchemaPublicationResult {
 
 """A registered Apollo Studio user."""
 type User implements Identity {
+  """Returns a list of all active user API keys for the user."""
+  apiKeys(includeCookies: Boolean = false): [UserApiKey!]!
   """Returns a representation of this user as an `Actor` type. Useful when determining which actor (usually a `User` or `Graph`) performed a particular action in Studio."""
   asActor: Actor!
   """The user's unique ID."""
   id: ID!
   """The user's first and last name."""
   name: String!
-  """Returns a list of all active user API keys for the user."""
-  apiKeys(includeCookies: Boolean = false): [UserApiKey!]!
   """A list of the user's memberships in Apollo Studio organizations."""
   memberships: [UserMembership!]!
 }

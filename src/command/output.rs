@@ -1,5 +1,8 @@
-use std::collections::BTreeMap;
-use std::io;
+use std::{
+    collections::BTreeMap,
+    fmt::Write,
+    io::{self, IsTerminal},
+};
 
 use crate::command::supergraph::compose::CompositionOutput;
 use crate::options::JsonVersion;
@@ -8,7 +11,6 @@ use crate::RoverError;
 
 use crate::command::template::queries::list_templates_for_language::ListTemplatesForLanguageTemplates;
 use crate::options::ProjectLanguage;
-use atty::Stream;
 use calm_io::{stderr, stderrln};
 use camino::Utf8PathBuf;
 use rover_client::operations::contract::describe::ContractDescribeResponse;
@@ -184,8 +186,13 @@ impl RoverOutput {
                         subgraph,
                         graph_ref
                     )?;
-                } else {
+                } else if publish_response.subgraph_was_updated {
                     stderrln!("The '{}' subgraph in '{}' was updated", subgraph, graph_ref)?;
+                } else {
+                    stderrln!(
+                        "The '{}' subgraph was NOT updated because no changes were detected",
+                        subgraph
+                    )?;
                 }
 
                 if publish_response.supergraph_was_updated {
@@ -263,11 +270,14 @@ impl RoverOutput {
             RoverOutput::CompositionResult(composition_output) => {
                 let warn_prefix = Style::HintPrefix.paint("HINT:");
 
-                let hints_string = composition_output
-                    .hints
-                    .iter()
-                    .map(|hint| format!("{} {}\n", warn_prefix, hint.message))
-                    .collect::<String>();
+                let hints_string =
+                    composition_output
+                        .hints
+                        .iter()
+                        .fold(String::new(), |mut output, hint| {
+                            let _ = writeln!(output, "{} {}", warn_prefix, hint.message);
+                            output
+                        });
 
                 stderrln!("{}", hints_string)?;
 
@@ -588,7 +598,7 @@ impl RoverOutput {
     }
 
     pub(crate) fn print_descriptor(&self) -> io::Result<()> {
-        if atty::is(Stream::Stdout) {
+        if std::io::stdout().is_terminal() {
             if let Some(descriptor) = self.descriptor() {
                 stderrln!("{}: \n", Style::Heading.paint(descriptor))?;
             }
@@ -596,7 +606,7 @@ impl RoverOutput {
         Ok(())
     }
     pub(crate) fn print_one_line_descriptor(&self) -> io::Result<()> {
-        if atty::is(Stream::Stdout) {
+        if std::io::stdout().is_terminal() {
             if let Some(descriptor) = self.descriptor() {
                 stderr!("{}: ", Style::Heading.paint(descriptor))?;
             }
@@ -642,7 +652,8 @@ mod tests {
         },
         shared::{
             ChangeSeverity, CheckTaskStatus, CheckWorkflowResponse, Diagnostic, LintCheckResponse,
-            OperationCheckResponse, SchemaChange, Sdl, SdlType,
+            OperationCheckResponse, ProposalsCheckResponse, ProposalsCheckSeverityLevel,
+            RelatedProposal, SchemaChange, Sdl, SdlType,
         },
     };
 
@@ -956,6 +967,15 @@ mod tests {
                 errors_count: 0,
                 warnings_count: 1,
             }),
+            maybe_proposals_response: Some(ProposalsCheckResponse {
+                task_status: CheckTaskStatus::PASSED,
+                target_url: Some("https://studio.apollographql.com/graph/my-graph/variant/current/proposals/1".to_string()),
+                severity_level: ProposalsCheckSeverityLevel::WARN,
+                related_proposals: vec![RelatedProposal {
+                    status: "OPEN".to_string(),
+                    display_name: "Mock Proposal".to_string(),
+                }],
+            }),
             maybe_downstream_response: None,
         };
 
@@ -1001,7 +1021,18 @@ mod tests {
                         ],
                         "errors_count": 0,
                         "warnings_count": 1
-                    }
+                    },
+                    "proposals": {
+                        "related_proposals": [
+                            {
+                                "status": "OPEN",
+                                "display_name": "Mock Proposal",
+                            }
+                        ],
+                        "severity_level": "WARN",
+                        "target_url": "https://studio.apollographql.com/graph/my-graph/variant/current/proposals/1",
+                        "task_status": "PASSED",
+                      }
                 }
             },
             "error": null
@@ -1063,6 +1094,15 @@ mod tests {
                 errors_count: 1,
                 warnings_count: 1,
             }),
+            maybe_proposals_response: Some(ProposalsCheckResponse {
+                task_status: CheckTaskStatus::FAILED,
+                target_url: Some("https://studio.apollographql.com/graph/my-graph/variant/current/proposals/1".to_string()),
+                severity_level: ProposalsCheckSeverityLevel::ERROR,
+                related_proposals: vec![RelatedProposal {
+                    status: "OPEN".to_string(),
+                    display_name: "Mock Proposal".to_string(),
+                }],
+            }),
             maybe_downstream_response: None,
         };
 
@@ -1120,11 +1160,22 @@ mod tests {
                         "errors_count": 1,
                         "warnings_count": 1
                     },
+                    "proposals": {
+                        "related_proposals": [
+                            {
+                                "status": "OPEN",
+                                "display_name": "Mock Proposal",
+                            }
+                        ],
+                        "severity_level": "ERROR",
+                        "target_url": "https://studio.apollographql.com/graph/my-graph/variant/current/proposals/1",
+                        "task_status": "FAILED",
+                      }
                 },
             },
             "error": {
-                "message": "The changes in the schema you proposed caused operation and lint checks to fail.",
-                "code": "E042",
+                "message": "The changes in the schema you proposed caused operation, linter and proposal checks to fail.",
+                "code": "E043",
             }
         });
         assert_json_eq!(expected_json, actual_json);
@@ -1184,6 +1235,7 @@ mod tests {
             build_errors: BuildErrors::new(),
             supergraph_was_updated: true,
             subgraph_was_created: true,
+            subgraph_was_updated: true,
             launch_url: Some("test.com/launchurl".to_string()),
             launch_cli_copy: Some(
                 "You can monitor this launch in Apollo Studio: test.com/launchurl".to_string(),
@@ -1205,6 +1257,7 @@ mod tests {
                 "api_schema_hash": "123456",
                 "supergraph_was_updated": true,
                 "subgraph_was_created": true,
+                "subgraph_was_updated": true,
                 "success": true,
                 "launch_url": "test.com/launchurl",
                 "launch_cli_copy": "You can monitor this launch in Apollo Studio: test.com/launchurl",
@@ -1234,6 +1287,7 @@ mod tests {
             .into(),
             supergraph_was_updated: false,
             subgraph_was_created: false,
+            subgraph_was_updated: true,
             launch_url: None,
             launch_cli_copy: None,
         };
@@ -1252,6 +1306,7 @@ mod tests {
             "data": {
                 "api_schema_hash": null,
                 "subgraph_was_created": false,
+                "subgraph_was_updated": true,
                 "supergraph_was_updated": false,
                 "success": true,
                 "launch_url": null,
@@ -1277,6 +1332,43 @@ mod tests {
                     ]
                 }
             }
+        });
+        assert_json_eq!(expected_json, actual_json);
+    }
+
+    #[test]
+    fn subgraph_publish_unchanged_response_json() {
+        let mock_publish_response = SubgraphPublishResponse {
+            api_schema_hash: Some("123456".to_string()),
+            build_errors: BuildErrors::new(),
+            supergraph_was_updated: false,
+            subgraph_was_created: false,
+            subgraph_was_updated: false,
+            launch_url: None,
+            launch_cli_copy: None,
+        };
+        let actual_json: JsonOutput = RoverOutput::SubgraphPublishResponse {
+            graph_ref: GraphRef {
+                name: "graph".to_string(),
+                variant: "variant".to_string(),
+            },
+            subgraph: "subgraph".to_string(),
+            publish_response: mock_publish_response,
+        }
+        .into();
+        let expected_json = json!(
+        {
+            "json_version": "1",
+            "data": {
+                "api_schema_hash": "123456",
+                "supergraph_was_updated": false,
+                "subgraph_was_created": false,
+                "subgraph_was_updated": false,
+                "success": true,
+                "launch_url": null,
+                "launch_cli_copy": null,
+            },
+            "error": null
         });
         assert_json_eq!(expected_json, actual_json);
     }

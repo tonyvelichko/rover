@@ -1,8 +1,7 @@
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
-use crate::shared::Diagnostic;
-use crate::RoverClientError;
+use crate::{shared::lint_response::Diagnostic, RoverClientError};
 
 use rover_std::Style;
 
@@ -22,6 +21,7 @@ pub struct CheckWorkflowResponse {
     // a common task abstraction.
     pub maybe_operations_response: Option<OperationCheckResponse>,
     pub maybe_lint_response: Option<LintCheckResponse>,
+    pub maybe_proposals_response: Option<ProposalsCheckResponse>,
     pub maybe_downstream_response: Option<DownstreamCheckResponse>,
 }
 
@@ -53,11 +53,20 @@ impl CheckWorkflowResponse {
             if !lint_response.diagnostics.is_empty() {
                 msg.push('\n');
                 msg.push_str(&Self::task_title(
-                    "Lint Check",
+                    "Linter Check",
                     lint_response.task_status.clone(),
                 ));
                 msg.push_str(lint_response.get_output().as_str());
             }
+        }
+
+        if let Some(proposals_response) = &self.maybe_proposals_response {
+            msg.push('\n');
+            msg.push_str(&Self::task_title(
+                "Proposals Check",
+                proposals_response.task_status.clone(),
+            ));
+            msg.push_str(proposals_response.get_output().as_str());
         }
 
         if let Some(downstream_response) = &self.maybe_downstream_response {
@@ -88,6 +97,10 @@ impl CheckWorkflowResponse {
 
         if let Some(lint_response) = &self.maybe_lint_response {
             tasks["lint"] = json!(lint_response);
+        }
+
+        if let Some(proposals_response) = &self.maybe_proposals_response {
+            tasks["proposals"] = json!(proposals_response);
         }
 
         if let Some(downstream_response) = &self.maybe_downstream_response {
@@ -208,7 +221,7 @@ impl LintCheckResponse {
             table.add_row(row![
                 diagnostic.level,
                 diagnostic.coordinate,
-                diagnostic.start_byte_offset,
+                diagnostic.start_line,
                 diagnostic.message
             ]);
         }
@@ -248,7 +261,78 @@ impl LintCheckResponse {
         msg.push_str(&self.get_table());
 
         if let Some(url) = &self.target_url {
-            msg.push_str("View lint check details at: ");
+            msg.push_str("View linter check details at: ");
+            msg.push_str(&Style::Link.paint(url));
+        }
+
+        msg
+    }
+
+    pub fn get_json(&self) -> Value {
+        json!(self)
+    }
+}
+
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+
+pub enum ProposalsCheckSeverityLevel {
+    ERROR,
+    OFF,
+    WARN,
+}
+
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+pub struct RelatedProposal {
+    pub status: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+pub struct ProposalsCheckResponse {
+    pub task_status: CheckTaskStatus,
+    pub severity_level: ProposalsCheckSeverityLevel,
+    pub target_url: Option<String>,
+    pub related_proposals: Vec<RelatedProposal>,
+}
+
+impl ProposalsCheckResponse {
+    pub fn get_table(&self) -> String {
+        let mut table = Table::new();
+
+        table.set_format(*FORMAT_BOX_CHARS);
+
+        // bc => sets top row to be bold and center
+        table.add_row(row![bc =>  "Status", "Proposal Name"]);
+
+        for proposal in &self.related_proposals {
+            table.add_row(row![proposal.status, proposal.display_name,]);
+        }
+
+        table.to_string()
+    }
+
+    pub fn get_msg(&self) -> String {
+        match self.severity_level {
+            ProposalsCheckSeverityLevel::ERROR => "Your check failed because some or all of the diffs in this change are not in an approved Proposal.".to_string(),
+            ProposalsCheckSeverityLevel::WARN => "Your check passed with warnings because some or all of the diffs in this change are not in an approved Proposal.".to_string(),
+            ProposalsCheckSeverityLevel::OFF => "Proposal checks are disabled".to_string(),
+        }
+    }
+
+    pub fn get_output(&self) -> String {
+        let mut msg = String::new();
+
+        if !self.related_proposals.is_empty() {
+            msg.push_str(&self.get_msg());
+            msg.push('\n');
+            msg.push_str(&self.get_table());
+        } else {
+            msg.push_str("Your proposals task did not return any approved proposals associated with these changes.");
+            msg.push('\n');
+        }
+
+        if let Some(url) = &self.target_url {
+            msg.push_str("View proposal check details at: ");
             msg.push_str(&Style::Link.paint(url));
         }
 

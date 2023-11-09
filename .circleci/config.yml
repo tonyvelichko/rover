@@ -5,6 +5,7 @@ orbs:
   rust: circleci/rust@1.6.0
   gh: circleci/github-cli@2.2.0
   node: circleci/node@5.1.0
+  secops: apollo/circleci-secops-orb@2.0.1
 
 # These filters are used in all of the jobs for our release workflow
 run_release: &run_release
@@ -184,6 +185,15 @@ workflows:
             - "Build and bundle release artifacts (arm_macos)"
             - "Build and bundle release artifacts (amd_windows)"
           <<: *run_release
+  security-scans:
+    jobs:
+      - secops/gitleaks:
+          context:
+            - platform-docker-ro
+            - github-orb
+            - secops-oidc
+          git-base-revision: <<#pipeline.git.base_revision>><<pipeline.git.base_revision>><</pipeline.git.base_revision >>
+          git-revision: << pipeline.git.revision >>
 
 jobs:
   xtask:
@@ -371,15 +381,8 @@ commands:
             - run:
                 name: Install volta
                 command: |
-                  $installer_dir = "$Env:TEMP".Path
-                  $latest_version = ((Invoke-WebRequest -URI https://volta.sh/latest-version).Content -split '\n')[0]
-                  $download_url = "https://github.com/volta-cli/volta/releases/download/v$latest_version/volta-$latest_version-windows-x86_64.msi"
-                  echo "Downloading volta"
-                  $msi_path = "$installer_dir\volta-init.msi"
-                  (New-Object System.Net.WebClient).DownloadFile("$download_url", "$msi_path")
-                  echo "Installing volta"
-                  msiexec.exe /i "$msi_path" /qn
-                  exit $LASTEXITCODE
+                  choco install volta -y
+
       - unless:
           condition:
             equal: [*arm_ubuntu_executor, << parameters.platform >>]
@@ -470,7 +473,6 @@ commands:
                 key: rust-<< pipeline.parameters.cache_version >>-<< parameters.platform >>-{{ checksum "Cargo.lock" }}-{{ checksum "rust-toolchain.toml" }}
                 paths:
                   - C:\\Users\\circleci\.cargo
-
 
       - when:
           condition:

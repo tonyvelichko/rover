@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context};
 use apollo_federation_types::config::{FederationVersion, PluginVersion, RouterVersion};
 use binstall::Installer;
 use camino::Utf8PathBuf;
-use rover_std::Fs;
+use rover_std::{sanitize_url, Fs};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -92,11 +92,17 @@ impl Plugin {
 
     pub fn get_tarball_url(&self) -> RoverResult<String> {
         Ok(format!(
-            "https://rover.apollo.dev/tar/{name}/{target_arch}/{version}",
+            "{host}/tar/{name}/{target_arch}/{version}",
+            host = self.get_host(),
             name = self.get_name(),
             target_arch = self.get_target_arch()?,
             version = self.get_tarball_version()
         ))
+    }
+
+    fn get_host(&self) -> String {
+        std::env::var("APOLLO_ROVER_DOWNLOAD_HOST")
+            .unwrap_or_else(|_| "https://rover.apollo.dev".to_string())
     }
 }
 
@@ -292,13 +298,13 @@ impl PluginInstaller {
     fn install_latest_major(&self, plugin: &Plugin) -> RoverResult<Option<Utf8PathBuf>> {
         let latest_version = self
             .rover_installer
-            .get_plugin_version(&plugin.get_tarball_url()?)?;
+            .get_plugin_version(&plugin.get_tarball_url()?, true)?;
         if let Ok(Some(exe)) = self.find_existing_exact(plugin, &latest_version) {
             tracing::debug!("{} exists, skipping install", &exe);
             Ok(Some(exe))
         } else {
             // do the install.
-            self.do_install(plugin)?;
+            self.do_install(plugin, true)?;
             self.find_existing_exact(plugin, &latest_version)
         }
     }
@@ -317,18 +323,24 @@ impl PluginInstaller {
         if let Ok(Some(exe)) = self.find_existing_exact(plugin, version) {
             Ok(Some(exe))
         } else {
-            self.do_install(plugin)
+            self.do_install(plugin, false)
         }
     }
 
-    fn do_install(&self, plugin: &Plugin) -> RoverResult<Option<Utf8PathBuf>> {
+    fn do_install(&self, plugin: &Plugin, is_latest: bool) -> RoverResult<Option<Utf8PathBuf>> {
         let plugin_name = plugin.get_name();
         let plugin_tarball_url = plugin.get_tarball_url()?;
-        eprintln!("downloading the '{plugin_name}' plugin from {plugin_tarball_url}");
+        // only print the download message if the username and password have been stripped from the URL
+        if let Some(sanitized_url) = sanitize_url(&plugin_tarball_url) {
+            eprintln!("downloading the '{plugin_name}' plugin from {sanitized_url}");
+        } else {
+            eprintln!("downloading the '{plugin_name}' plugin");
+        }
         Ok(self.rover_installer.install_plugin(
             &plugin_name,
             &plugin_tarball_url,
             &self.client_config.get_reqwest_client()?,
+            is_latest,
         )?)
     }
 }

@@ -1,3 +1,5 @@
+use std::io::{self, IsTerminal};
+
 use anyhow::anyhow;
 use clap::Parser;
 use reqwest::Url;
@@ -6,7 +8,7 @@ use serde::Serialize;
 
 use crate::options::{GraphRefOpt, ProfileOpt, SchemaOpt, SubgraphOpt};
 use crate::utils::client::StudioClientConfig;
-use crate::{RoverOutput, RoverResult};
+use crate::{RoverError, RoverErrorSuggestion, RoverOutput, RoverResult};
 
 use rover_client::operations::subgraph::publish::{self, SubgraphPublishInput};
 use rover_client::shared::GitContext;
@@ -37,11 +39,12 @@ pub struct Publish {
     #[arg(long)]
     #[serde(skip_serializing)]
     routing_url: Option<String>,
+
     /// Bypasses warnings and the prompt to confirm publish when the routing url
     /// is invalid in TTY environment. In a future major version, this flag will
     /// be required to publish in a non-TTY environment. For now it will warn
     /// and publish anyway.
-    #[arg(long, requires("routing_url"))]
+    #[arg(long)]
     allow_invalid_routing_url: bool,
 }
 
@@ -56,9 +59,9 @@ impl Publish {
         if !self.allow_invalid_routing_url {
             Self::handle_maybe_invalid_routing_url(
                 &self.routing_url,
-                &mut std::io::stderr(),
-                &mut std::io::stdin(),
-                atty::is(atty::Stream::Stderr) && atty::is(atty::Stream::Stdin),
+                &mut io::stderr(),
+                &mut io::stdin(),
+                io::stderr().is_terminal() && io::stdin().is_terminal(),
             )?;
         }
 
@@ -75,9 +78,9 @@ impl Publish {
 
             Self::handle_maybe_invalid_routing_url(
                 &Some(fetch_response),
-                &mut std::io::stderr(),
-                &mut std::io::stdin(),
-                atty::is(atty::Stream::Stderr) && atty::is(atty::Stream::Stdin),
+                &mut io::stderr(),
+                &mut io::stdin(),
+                io::stderr().is_terminal() && io::stdin().is_terminal(),
             )?;
         }
 
@@ -117,8 +120,8 @@ impl Publish {
         maybe_invalid_routing_url: &Option<String>,
         // For testing purposes, we pass in stub `Write`er and `Read`ers to
         // simulate input and verify output.
-        writer: &mut impl std::io::Write,
-        reader: &mut impl std::io::Read,
+        writer: &mut impl io::Write,
+        reader: &mut impl io::Read,
         // Simulate a CI environment (non-TTY) for testing
         is_atty: bool,
     ) -> RoverResult<()> {
@@ -128,40 +131,46 @@ impl Publish {
             match Url::parse(routing_url) {
                 Ok(parsed_url) => {
                     tracing::debug!("Parsed URL: {}", parsed_url.to_string());
-                    if !vec!["http", "https"].contains(&parsed_url.scheme()) {
+                    let reason = format!("`{}` is not a valid routing URL. The `{}` protocol is not supported by the router. Valid protocols are `http` and `https`.", Style::Link.paint(routing_url), &parsed_url.scheme());
+                    if !["http", "https"].contains(&parsed_url.scheme()) {
                         if is_atty {
                             Self::prompt_for_publish(
-                                format!("The `{}` protocol is not supported by the router. Valid protocols are `http` and `https`. Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?", &parsed_url.scheme()).as_str(),
+                                format!("{reason} Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?").as_str(),
                                 reader,
                                 writer,
                             )?;
                         } else {
-                            Self::issue_non_tty_warnings(writer)?;
+                            Self::non_tty_hard_error(&reason)?;
                         }
                     } else if let Some(host) = parsed_url.host_str() {
-                        if vec!["localhost", "127.0.0.1"].contains(&host) {
+                        if ["localhost", "127.0.0.1"].contains(&host) {
+                            let reason = format!("The host `{}` is not routable via the public internet. Continuing the publish will make this subgraph reachable in local environments only.", host);
                             if is_atty {
                                 Self::prompt_for_publish(
-                                format!("The host `{}` is not routable via the public internet. Continuing the publish will make this subgraph reachable in local development only. Would you still like to publish?", host).as_str(),
-                                reader,
-                                writer,
-                            )?;
+                                    format!("{reason} Would you still like to publish?").as_str(),
+                                    reader,
+                                    writer,
+                                )?;
                             } else {
-                                Self::issue_non_tty_warnings(writer)?;
+                                Self::non_tty_warn_about_local_url(&reason, writer)?;
                             }
                         }
                     }
                 }
                 Err(parse_error) => {
                     tracing::debug!("Parse error: {}", parse_error.to_string());
+                    let reason = format!(
+                        "`{}` is not a valid routing URL.",
+                        Style::Link.paint(routing_url)
+                    );
                     if is_atty {
                         Self::prompt_for_publish(
-                        format!("`{}` is not a valid routing URL. Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?", routing_url).as_str(),
+                        format!("{} Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?", &reason).as_str(),
                             reader,
                             writer,
                         )?;
                     } else {
-                        Self::issue_non_tty_warnings(writer)?;
+                        Self::non_tty_hard_error(&reason)?;
                     }
                 }
             }
@@ -171,8 +180,8 @@ impl Publish {
 
     pub fn prompt_for_publish(
         message: &str,
-        reader: &mut impl std::io::Read,
-        writer: &mut impl std::io::Write,
+        reader: &mut impl io::Read,
+        writer: &mut impl io::Write,
     ) -> RoverResult<Option<bool>> {
         write!(writer, "{} [y/N] ", message)?;
         let mut response = [0];
@@ -180,21 +189,20 @@ impl Publish {
         if std::str::from_utf8(&response).unwrap().to_lowercase() == *"y" {
             Ok(Some(true))
         } else {
-            Err(anyhow!("You cancelled the publish.").into())
+            Err(anyhow!("You cancelled a subgraph publish due to an invalid routing url.").into())
         }
     }
 
-    pub fn issue_non_tty_warnings(writer: &mut dyn std::io::Write) -> RoverResult<()> {
-        writeln!(
-            writer,
-            "{} In a future major version of Rover, the `--allow-invalid-routing-url` flag will be required to publish a subgraph with an invalid routing URL in CI.",
-            Style::WarningPrefix.paint("WARN:")
-        )?;
-        writeln!(
-            writer,
-            "{} Found an invalid URL, but we can't prompt in a non-interactive environment. Publishing anyway.",
-            Style::WarningPrefix.paint("WARN:")
-        )?;
+    pub fn non_tty_hard_error(reason: &str) -> RoverResult<()> {
+        Err(RoverError::new(anyhow!("{reason}"))
+            .with_suggestion(RoverErrorSuggestion::AllowInvalidRoutingUrlOrSpecifyValidUrl))
+    }
+
+    pub fn non_tty_warn_about_local_url(
+        reason: &str,
+        writer: &mut dyn io::Write,
+    ) -> RoverResult<()> {
+        writeln!(writer, "{} {reason}", Style::WarningPrefix.paint("WARN:"),)?;
         Ok(())
     }
 }
@@ -216,7 +224,7 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(input.is_empty());
-        assert!(std::str::from_utf8(&output).unwrap().contains("`invalid-url` is not a valid routing URL. Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?"));
+        assert!(std::str::from_utf8(&output).unwrap().contains("is not a valid routing URL. Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?"));
     }
 
     #[test]
@@ -234,9 +242,9 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("You cancelled the publish."));
+            .contains("You cancelled a subgraph publish due to an invalid routing url."));
         assert!(input.is_empty());
-        assert!(std::str::from_utf8(&output).unwrap().contains("`invalid-url` is not a valid routing URL. Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?"));
+        assert!(std::str::from_utf8(&output).unwrap().contains("is not a valid routing URL. Continuing the publish will make this subgraph unreachable by your supergraph. Would you still like to publish?"));
     }
 
     #[test]
@@ -253,12 +261,12 @@ mod tests {
         assert!(result.is_ok());
         assert!(input.is_empty());
         assert!(std::str::from_utf8(&output).unwrap().contains(
-            "The `ftp` protocol is not supported by the router. Valid protocols are `http` and `https`."
+            "is not a valid routing URL. The `ftp` protocol is not supported by the router. Valid protocols are `http` and `https`."
         ));
     }
 
     #[test]
-    fn test_localhost() {
+    fn test_localhost_tty() {
         let mut input = "y".as_bytes();
         let mut output: Vec<u8> = Vec::new();
         let result = Publish::handle_maybe_invalid_routing_url(
@@ -271,7 +279,25 @@ mod tests {
         assert!(result.is_ok());
         assert!(input.is_empty());
         assert!(std::str::from_utf8(&output).unwrap().contains(
-            "The host `localhost` is not routable via the public internet. Continuing the publish will make this subgraph reachable in local development only."
+            "The host `localhost` is not routable via the public internet. Continuing the publish will make this subgraph reachable in local environments only."
+        ));
+    }
+
+    #[test]
+    fn test_localhost_no_tty() {
+        let mut input: &[u8] = &[];
+        let mut output: Vec<u8> = Vec::new();
+        let result = Publish::handle_maybe_invalid_routing_url(
+            &Some("http://localhost:8000".to_string()),
+            &mut output,
+            &mut input,
+            false,
+        );
+
+        assert!(result.is_ok());
+        assert!(input.is_empty());
+        assert!(std::str::from_utf8(&output).unwrap().contains(
+            "The host `localhost` is not routable via the public internet. Continuing the publish will make this subgraph reachable in local environments only."
         ));
     }
 
@@ -286,9 +312,11 @@ mod tests {
             false,
         );
 
-        assert!(result.is_ok());
+        assert!(result.is_err());
         assert!(input.is_empty());
-        assert!(std::str::from_utf8(&output).unwrap().contains("In a future major version of Rover, the `--allow-invalid-routing-url` flag will be required to publish a subgraph with an invalid routing URL in CI."));
-        assert!(std::str::from_utf8(&output).unwrap().contains("Found an invalid URL, but we can't prompt in a non-interactive environment. Publishing anyway."));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("is not a valid routing URL."));
     }
 }

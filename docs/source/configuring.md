@@ -197,6 +197,7 @@ Here's an example success output for `rover subgraph publish`:
     "api_schema_hash": "a1bc0d",
     "supergraph_was_updated": true,
     "subgraph_was_created": true,
+    "subgraph_was_updated": true,
     "success": true
   },
   "error": null
@@ -211,6 +212,7 @@ And here's an example error output:
   "data": {
     "api_schema_hash": null,
     "subgraph_was_created": false,
+    "subgraph_was_updated": true,
     "supergraph_was_updated": false,
     "success": true
   },
@@ -325,7 +327,7 @@ If present, an environment variable's value takes precedence over all other meth
 | `APOLLO_HOME` | The path to the parent directory of Rover's binary. The default value is your operating system's default home directory. Rover will install itself in a folder called `.rover` inside the directory specified. |
 | `APOLLO_CONFIG_HOME` | The path where Rover's configuration is stored. The default value is your operating system's default configuration directory. |
 | `APOLLO_KEY` | The API key that Rover should use to authenticate with Apollo Studio. |
-| `APOLLO_TELEMETRY_DISABLED` | Set to `1` if you don't want Rover to collect anonymous usage data. |
+| `APOLLO_TELEMETRY_DISABLED` | Set to `true` if you don't want Rover to collect anonymous usage data. |
 | `APOLLO_VCS_REMOTE_URL` | The URL of your project's remote repository. See [Git context](#git-context). |
 | `APOLLO_VCS_BRANCH` | The name of the version-controlled branch. See [Git context](#git-context). |
 | `APOLLO_VCS_COMMIT` | The long identifier (SHA in Git) of the commit. See [Git context](#git-context). |

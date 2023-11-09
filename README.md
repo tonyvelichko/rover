@@ -36,7 +36,6 @@ rover graph publish --schema ./path-to-valid-schema test@cats
 ## Command-line options
 
 ```console
-$ rover help
 Rover - Your Graph Companion
 
 Usage: rover [OPTIONS] <COMMAND>
@@ -62,6 +61,8 @@ Commands:
           Interact with Rover's documentation
   update
           Commands related to updating rover
+  persisted-queries
+          Commands for persisted queries [aliases: pq]
   explain
           Explain error codes
   help

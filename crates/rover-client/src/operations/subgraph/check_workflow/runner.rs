@@ -5,7 +5,8 @@ use crate::blocking::StudioClient;
 use crate::operations::subgraph::check_workflow::types::QueryResponseData;
 use crate::shared::{
     CheckWorkflowResponse, Diagnostic, DownstreamCheckResponse, GraphRef, LintCheckResponse,
-    OperationCheckResponse, SchemaChange,
+    OperationCheckResponse, ProposalsCheckResponse, ProposalsCheckSeverityLevel, RelatedProposal,
+    SchemaChange,
 };
 use crate::RoverClientError;
 
@@ -13,10 +14,11 @@ use apollo_federation_types::build::BuildError;
 
 use self::subgraph_check_workflow_query::SubgraphCheckWorkflowQueryGraphCheckWorkflowTasksOn::{
     CompositionCheckTask, DownstreamCheckTask, LintCheckTask, OperationsCheckTask,
+    ProposalsCheckTask,
 };
 
 use self::subgraph_check_workflow_query::{
-    CheckWorkflowStatus, CheckWorkflowTaskStatus,
+    CheckWorkflowStatus, CheckWorkflowTaskStatus, ProposalStatus,
     SubgraphCheckWorkflowQueryGraphCheckWorkflowTasksOnDownstreamCheckTaskResults,
     SubgraphCheckWorkflowQueryGraphCheckWorkflowTasksOnLintCheckTaskResult,
     SubgraphCheckWorkflowQueryGraphCheckWorkflowTasksOnOperationsCheckTaskResult,
@@ -47,26 +49,31 @@ pub fn run(
     client: &StudioClient,
 ) -> Result<CheckWorkflowResponse, RoverClientError> {
     let graph_ref = input.graph_ref.clone();
-    let mut data;
+    let mut url: Option<String> = None;
     let now = Instant::now();
     loop {
-        data = client.post::<SubgraphCheckWorkflowQuery>(input.clone().into())?;
-        let graph = data.clone().graph.ok_or(RoverClientError::GraphNotFound {
-            graph_ref: graph_ref.clone(),
-        })?;
-        if let Some(check_workflow) = graph.check_workflow {
-            if !matches!(check_workflow.status, CheckWorkflowStatus::PENDING) {
-                break;
+        let result = client.post::<SubgraphCheckWorkflowQuery>(input.clone().into());
+        match result {
+            Ok(data) => {
+                let graph = data.clone().graph.ok_or(RoverClientError::GraphNotFound {
+                    graph_ref: graph_ref.clone(),
+                })?;
+                if let Some(check_workflow) = graph.check_workflow {
+                    if !matches!(check_workflow.status, CheckWorkflowStatus::PENDING) {
+                        return get_check_response_from_data(data, graph_ref, subgraph);
+                    }
+                }
+                url = get_target_url_from_data(data);
+            }
+            Err(e) => {
+                eprintln!("error while checking status of check: {e}\nthis error may be transient... retrying");
             }
         }
         if now.elapsed() > Duration::from_secs(input.checks_timeout_seconds) {
-            return Err(RoverClientError::ChecksTimeoutError {
-                url: get_target_url_from_data(data),
-            });
+            return Err(RoverClientError::ChecksTimeoutError { url });
         }
         std::thread::sleep(Duration::from_secs(5));
     }
-    get_check_response_from_data(data, graph_ref, subgraph)
 }
 
 fn get_check_response_from_data(
@@ -98,6 +105,10 @@ fn get_check_response_from_data(
         SubgraphCheckWorkflowQueryGraphCheckWorkflowTasksOnLintCheckTaskResult,
     > = None;
     let mut lint_target_url = None;
+
+    let mut proposals_status = None;
+    let mut proposals_result: Option<ProposalsCheckTaskUnion> = None;
+    let mut proposals_target_url = None;
 
     let mut downstream_status = None;
     let mut downstream_target_url = None;
@@ -140,6 +151,11 @@ fn get_check_response_from_data(
                         null_field: "graph.checkWorkflow....on LintCheckTask.result".to_string(),
                     });
                 }
+            }
+            ProposalsCheckTask(typed_task) => {
+                proposals_status = Some(task.status);
+                proposals_target_url = task.target_url;
+                proposals_result = Some(typed_task);
             }
             DownstreamCheckTask(typed_task) => {
                 downstream_status = Some(task.status);
@@ -190,6 +206,11 @@ fn get_check_response_from_data(
             lint_target_url,
             lint_result,
         ),
+        maybe_proposals_response: get_proposals_response_from_result(
+            proposals_target_url,
+            proposals_status,
+            proposals_result,
+        ),
         maybe_downstream_response: get_downstream_response_from_result(
             downstream_status,
             downstream_target_url,
@@ -203,9 +224,7 @@ fn get_check_response_from_data(
             graph_ref,
             check_response: Box::new(check_response),
         }),
-        _ => Err(RoverClientError::ChecksTimeoutError {
-            url: Some(default_target_url),
-        }),
+        _ => Err(RoverClientError::UnknownCheckWorkflowStatus),
     }
 }
 
@@ -296,6 +315,54 @@ fn get_lint_response_from_result(
                 diagnostics,
                 errors_count: result.stats.errors_count.unsigned_abs(),
                 warnings_count: result.stats.warnings_count.unsigned_abs(),
+            })
+        }
+        None => None,
+    }
+}
+
+fn get_proposals_response_from_result(
+    target_url: Option<String>,
+    task_status: Option<CheckWorkflowTaskStatus>,
+    task: Option<ProposalsCheckTaskUnion>,
+) -> Option<ProposalsCheckResponse> {
+    match task {
+        Some(result) => {
+            let related_proposals: Vec<RelatedProposal> = result
+                .related_proposal_results
+                .iter()
+                .map(|proposal| {
+                    let status = match proposal.status_at_check {
+                        ProposalStatus::APPROVED => "APPROVED",
+                        ProposalStatus::CLOSED => "CLOSED",
+                        ProposalStatus::DRAFT => "DRAFT",
+                        ProposalStatus::IMPLEMENTED => "IMPLEMENTED",
+                        ProposalStatus::OPEN => "OPEN",
+                        _ => "OTHER",
+                    };
+                    RelatedProposal {
+                        status: status.to_string(),
+                        display_name: proposal.proposal.display_name.clone(),
+                    }
+                })
+                .collect();
+            let severity = match result.severity_level {
+                subgraph_check_workflow_query::ProposalChangeMismatchSeverity::ERROR => {
+                    ProposalsCheckSeverityLevel::ERROR
+                }
+                subgraph_check_workflow_query::ProposalChangeMismatchSeverity::OFF => {
+                    ProposalsCheckSeverityLevel::OFF
+                }
+                subgraph_check_workflow_query::ProposalChangeMismatchSeverity::WARN => {
+                    ProposalsCheckSeverityLevel::WARN
+                }
+                _ => ProposalsCheckSeverityLevel::OFF,
+            };
+            Some(ProposalsCheckResponse {
+                target_url,
+                task_status: task_status.into(),
+                severity_level: severity,
+                related_proposals,
             })
         }
         None => None,
